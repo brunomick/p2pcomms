@@ -1,0 +1,35 @@
+name: verify
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      # Only for release tags: the Linux build must match the hash committed in SHA256SUMS.
+      - name: Check reproducible build against committed SHA256SUMS
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: cd dist && sha256sum -c ../SHA256SUMS
+      - name: Upload release files
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2pcomms-release
+          path: |
+            dist/p2pcomms.html
+            dist/SHA256SUMS

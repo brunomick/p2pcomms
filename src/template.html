@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src '__CSP_SCRIPT_HASH__'; style-src 'unsafe-inline'; connect-src wss:; media-src blob: mediastream:; img-src data:; base-uri 'none'; form-action 'none'">
+<title>p2pcomms</title>
+<style>
+:root { --bg: #000; --fg: #fff; --dim: #8c8c8c; --line: #2a2a2a; color-scheme: dark; }
+* { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); color: var(--fg); }
+body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; }
+main { width: 100%; max-width: 400px; min-height: min(100vh, 720px); min-height: min(100dvh, 720px); padding: 40px 24px; display: flex; flex-direction: column; }
+.screen, .view { flex: 1; display: flex; flex-direction: column; }
+.grow { flex: 1; }
+h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.dim { color: var(--dim); }
+.small { font-size: 14px; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+
+button { font: inherit; width: 100%; padding: 12px 16px; border-radius: 6px; border: 1px solid var(--fg); background: var(--fg); color: var(--bg); cursor: pointer; }
+button.ghost { background: transparent; color: var(--fg); }
+button.quiet { background: transparent; color: var(--dim); border-color: transparent; padding: 8px 0; text-align: left; }
+button:disabled { opacity: .4; cursor: default; }
+button:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+
+input { font: inherit; width: 100%; min-width: 0; padding: 12px 0; background: transparent; color: var(--fg); border: 0; border-bottom: 1px solid var(--dim); border-radius: 0; outline: none; }
+input::placeholder { color: #555; }
+input:focus { border-bottom-color: var(--fg); }
+
+/* Status and notices: one block, moved into the slot of the visible view. */
+#statusbar { color: var(--dim); font-size: 14px; }
+#status, #error { white-space: pre-line; }
+#call-state:not(:empty) + #status { display: none; }
+#slot-home #statusbar, #slot-join #statusbar { margin-top: 16px; }
+#slot-waiting #statusbar { margin-bottom: 16px; }
+
+/* The one element with presence: the 4-word code. */
+.words { font-size: 30px; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; margin-top: 24px; user-select: all; overflow-wrap: anywhere; }
+.words span { display: block; }
+.words .sep { display: none; }
+
+.top { display: flex; justify-content: space-between; gap: 16px; color: var(--dim); font-size: 14px; }
+#sas-state { flex: none; }
+#sas-state.ok { color: var(--fg); }
+.verify { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 16px 0; margin: 16px 0; }
+#sas-words { font-size: 18px; font-weight: 600; margin-top: 6px; }
+.row { display: flex; gap: 8px; margin-top: 12px; }
+.row button { padding: 8px 12px; font-size: 14px; }
+
+/* The session fits the viewport: controls stay at the bottom, the middle scrolls or shrinks. */
+main:has(> #screen-session:not([hidden])) { height: 100vh; height: 100dvh; max-height: 720px; }
+#screen-session { min-height: 0; }
+
+/* Incoming and in-call states are full screens of their own (data-call set by ui.renderCall). */
+#screen-session.verified .verify,
+#screen-session[data-call="incoming"] > :not(#incoming),
+#screen-session[data-call="outgoing"] .verify,
+#screen-session[data-call="outgoing"] #chat-log,
+#screen-session[data-call="outgoing"] #chat-form,
+#screen-session[data-call="outgoing"] #btn-leave,
+#screen-session[data-call="active"] .verify,
+#screen-session[data-call="active"] #chat-log,
+#screen-session[data-call="active"] #chat-form,
+#screen-session[data-call="active"] #btn-leave { display: none; }
+#screen-session[data-call="outgoing"] .bar,
+#screen-session[data-call="active"] .bar { margin-top: auto; }
+
+#incoming { flex: 1; display: flex; flex-direction: column; }
+#incoming .stack { margin-top: auto; padding-top: 24px; }
+/* Both cameras share the area 50/50 (stacked here, side by side on wide screens); a lone one fills it. */
+#videos { flex: 1 1 0; min-height: 0; margin: 16px 0; display: flex; flex-direction: column; gap: 8px; }
+video { display: block; flex: 1 1 0; width: 100%; min-width: 0; min-height: 0; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+
+#chat-log { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 16px; }
+#chat-log > :first-child { margin-top: auto; }
+.msg { max-width: 80%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.me { align-self: flex-end; text-align: right; color: var(--dim); }
+.compose { display: flex; gap: 8px; align-items: center; }
+.compose button { width: auto; padding: 10px 14px; }
+.bar { display: flex; gap: 8px; margin-top: 16px; }
+.bar button { padding: 10px 0; font-size: 14px; }
+#btn-hangup { margin-top: 8px; }
+
+#privacy { color: var(--dim); font-size: 14px; padding-left: 18px; margin-top: 4px; }
+#privacy li { margin: 6px 0; }
+
+/* Wide screens: the app fills the window; buttons are auto-width and sit in rows. */
+@media (min-width: 768px) {
+  main { max-width: none; min-height: 100vh; min-height: 100dvh; padding: 40px 48px; }
+  main:has(> #screen-session:not([hidden])) { max-height: none; }
+  .grow { display: none; }
+
+  /* Start screens: a left-aligned column, centered vertically; the title stays at the top. */
+  #start-home > *, #join-form > *, #screen-waiting > *, #incoming > * { max-width: 520px; }
+  #start-home h1 { margin-bottom: auto; }
+  #start-home::after { content: ""; margin-top: auto; }
+  #join-form, #screen-waiting, #incoming { justify-content: center; }
+  .stack { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .stack button { width: auto; min-width: 128px; }
+  button.quiet { width: auto; }
+  .stack button.quiet { min-width: 0; padding: 8px 12px; }
+  #incoming .stack { margin-top: 32px; padding-top: 0; }
+  .words { font-size: 56px; line-height: 1.15; }
+  #slot-waiting { margin-top: 32px; }
+
+  /* Session: status on top, verify strip, chat filling the middle, composer and buttons at the bottom. */
+  #screen-session { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-areas: "top top" "verify verify" "main main" "compose bar"; column-gap: 24px; }
+  #screen-session > .top { grid-area: top; }
+  .verify { grid-area: verify; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; }
+  #sas-words { margin-top: 0; }
+  .verify .row { margin: 0 0 0 auto; }
+  .row button { width: auto; min-width: 112px; }
+  #incoming, #videos, #chat-log { grid-area: main; }
+  #chat-form { grid-area: compose; align-self: center; }
+  .bar { grid-area: bar; align-self: center; margin-top: 0; }
+  .bar button { width: auto; padding: 10px 20px; }
+  .msg { max-width: min(80%, 720px); }
+  #btn-hangup { grid-area: hangup; align-self: center; width: auto; margin-top: 0; padding: 10px 20px; font-size: 14px; }
+
+  /* In call: videos side by side, controls centered in one row at the bottom. */
+  #screen-session:is([data-call="outgoing"], [data-call="active"]) { grid-template-columns: 1fr auto auto 1fr; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "top top top top" "main main main main" ". bar hangup ."; column-gap: 0; }
+  #screen-session[data-call="active"] .bar { margin-right: 8px; }
+  #videos { flex-direction: row; margin: 24px 0; }
+  /* Audio-only: no video area; timer and controls centered. */
+  #screen-session:is([data-call="outgoing"], [data-call="active"]):not(:has(#videos > video:not([hidden]))) { grid-template-rows: auto auto auto; align-content: center; }
+  #screen-session:is([data-call="outgoing"], [data-call="active"]):not(:has(#videos > video:not([hidden]))) > .top { justify-content: center; }
+}
+</style>
+</head>
+<body>
+<main>
+<section id="screen-start" class="screen">
+  <div id="start-home" class="view">
+    <h1>p2pcomms</h1>
+    <p class="dim" style="margin-top:8px">Private. Direct. No servers.</p>
+    <div id="slot-home" class="slot">
+      <div id="statusbar">
+        <p><span id="call-state"></span><span id="status" role="status" aria-live="polite"></span><span id="countdown"></span></p>
+        <p id="error" role="alert" hidden></p>
+      </div>
+    </div>
+    <div class="grow"></div>
+    <div class="stack" style="margin-top:32px">
+      <button id="btn-new" type="button">New</button>
+      <button id="btn-have-code" class="ghost" type="button">Join</button>
+    </div>
+    <button id="btn-privacy" class="quiet" type="button" aria-expanded="false" aria-controls="privacy" style="margin-top:16px">Privacy</button>
+    <ul id="privacy" hidden>
+      <li>The other person sees your IP.</li>
+      <li>Nostr relays see IPs, a hashed room ID, encrypted handshake data and timing. Closed once connected.</li>
+      <li>A STUN server sees your IP.</li>
+      <li>Your ISP sees two IPs exchanging encrypted data.</li>
+      <li>Nothing is stored.</li>
+    </ul>
+  </div>
+  <form id="join-form" class="view" hidden>
+    <label for="code-input" class="dim">Enter code.</label>
+    <input id="code-input" autocomplete="off" spellcheck="false" placeholder="four words" style="margin-top:24px">
+    <div id="slot-join" class="slot"></div>
+    <div class="grow"></div>
+    <div class="stack" style="margin-top:32px">
+      <button id="btn-connect" type="submit">Connect</button>
+      <button id="btn-back" class="ghost" type="button">Back</button>
+    </div>
+  </form>
+</section>
+
+<section id="screen-waiting" class="screen" hidden>
+  <div id="code-box" hidden>
+    <p class="dim">Share this code.</p>
+    <p id="code-display" class="words"></p>
+  </div>
+  <div class="grow"></div>
+  <div id="slot-waiting" class="slot"></div>
+  <div class="stack">
+    <button id="btn-copy" type="button" hidden>Copy</button>
+    <button id="btn-cancel" class="ghost" type="button">Cancel</button>
+  </div>
+</section>
+
+<section id="screen-session" class="screen" hidden>
+  <div class="top">
+    <div id="slot-session" class="slot"></div>
+    <span id="sas-state">Unverified</span>
+  </div>
+  <div class="verify">
+    <p class="dim small">Read aloud. Same words?</p>
+    <p id="sas-words">…</p>
+    <div class="row">
+      <button id="btn-sas-ok" type="button" disabled>Match</button>
+      <button id="btn-sas-bad" class="ghost" type="button" disabled>Mismatch</button>
+    </div>
+  </div>
+
+  <div id="incoming" hidden>
+    <h2 id="incoming-text"></h2>
+    <p class="dim" style="margin-top:8px">Camera and mic stay off until you accept.</p>
+    <div class="stack">
+      <button id="btn-accept-video" type="button">Accept</button>
+      <button id="btn-accept-audio" class="ghost" type="button">Audio only</button>
+      <button id="btn-reject" class="quiet" type="button">Decline</button>
+    </div>
+  </div>
+  <div id="videos" hidden>
+    <video id="video-remote" autoplay playsinline></video>
+    <video id="video-local" autoplay playsinline muted></video>
+  </div>
+
+  <div id="chat-log" aria-live="polite"></div>
+  <form id="chat-form" class="compose">
+    <input id="chat-input" autocomplete="off" maxlength="4000" placeholder="Message">
+    <button id="btn-send" type="submit">Send</button>
+  </form>
+  <div class="bar">
+    <button id="btn-call-audio" class="ghost" type="button">Call</button>
+    <button id="btn-call-video" class="ghost" type="button">Video</button>
+    <button id="btn-mute" class="ghost" type="button" hidden>Mute</button>
+    <button id="btn-camera" class="ghost" type="button" hidden>Camera off</button>
+    <button id="btn-leave" class="ghost" type="button">Leave</button>
+  </div>
+  <button id="btn-hangup" type="button" hidden>Hang up</button>
+</section>
+</main>
+<!--
+Third-party software bundled in the script below (see also NOTICE):
+
+- trystero, @trystero-p2p/core, @trystero-p2p/nostr 0.26.0
+  Copyright (c) 2021 Dan Motzenbecker
+  License: MIT
+
+- @noble/secp256k1 3.2.0
+  Copyright (c) 2019 Paul Miller (https://paulmillr.com)
+  License: MIT
+
+- BIP-39 Spanish word list, by Marek Palatinus, Pavol Rusnak, Aaron Voisine
+  and Sean Bowe (normalized to lowercase ASCII)
+  License: MIT
+
+MIT License text (applies to each of the above, with its copyright line):
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<script>/*__APP__*/</script>
+</body>
+</html>

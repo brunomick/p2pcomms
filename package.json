@@ -1,0 +1,41 @@
+{
+  "name": "p2pcomms",
+  "version": "1.0.0",
+  "description": "Private peer-to-peer text, audio and video in a single self-contained HTML file",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "Bruno Mick",
+  "homepage": "https://github.com/brunomick/p2pcomms#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brunomick/p2pcomms.git"
+  },
+  "bugs": {
+    "url": "https://github.com/brunomick/p2pcomms/issues"
+  },
+  "keywords": [
+    "p2p",
+    "webrtc",
+    "privacy",
+    "end-to-end-encryption",
+    "nostr",
+    "chat",
+    "video-call"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "release:hash": "node scripts/release-hash.mjs"
+  },
+  "dependencies": {
+    "trystero": "0.26.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
